@@ -18,7 +18,7 @@ import { shouldSkipTokenRefresh } from '../utils/authRefresh';
  *   lệnh /auth/refresh, các request còn lại được xếp hàng vào queue chờ kết quả để retry.
  */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -57,7 +57,7 @@ api.interceptors.request.use(
 
 // Axios instance for public endpoints (does not send cookies or tokens)
 export const publicApi = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -98,7 +98,7 @@ api.interceptors.response.use(
 
       try {
         const res = await axios.post(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}/auth/refresh`,
+          `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'}/auth/refresh`,
           null,
           { withCredentials: true, skipBearer: true, skipAuthRefresh: true }
         );
