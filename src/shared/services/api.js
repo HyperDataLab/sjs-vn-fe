@@ -1,7 +1,8 @@
 /**
  * File source thuộc hệ thống FE ResearchPulse.
  *
- * File: shared\services\api.js
+ * File: shared/services/api.js
+ * Axios instance chuẩn hóa với cơ chế Mutex Request Queue ngăn ngừa Race Condition khi Token Refresh.
  */
 import axios from 'axios';
 import { useAuthStore } from '../../app/store/authStore';
@@ -10,19 +11,34 @@ import { shouldSkipTokenRefresh } from '../utils/authRefresh';
 /**
  * Axios instance dùng chung cho toàn bộ FE.
  *
- * Luồng auth hiện tại sau khi merge nhánh Duy:
- * - BE lưu access token/refresh token trong HTTP-only cookie.
- * - `withCredentials: true` giúp browser gửi cookie kèm request.
- * - Nếu API trả 401, interceptor sẽ thử gọi `/auth/refresh` đúng 1 lần
- * để lấy access token mới rồi gọi lại request ban đầu.
+ * Luồng auth:
+ * - BE lưu access token/refresh token trong HTTP-only cookie hoặc header Authorization.
+ * - withCredentials: true giúp browser tự động gửi cookie kèm request.
+ * - Mutex Token Refresh: Khi nhiều request đồng thời gặp 401, chỉ đúng 1 request được gửi
+ *   lệnh /auth/refresh, các request còn lại được xếp hàng vào queue chờ kết quả để retry.
  */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true
+  withCredentials: true,
 });
+
+// Mutex lock và hàng đợi request khi đang refresh token
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
 
 // Interceptor gửi token kèm request
 api.interceptors.request.use(
@@ -41,15 +57,13 @@ api.interceptors.request.use(
 
 // Axios instance for public endpoints (does not send cookies or tokens)
 export const publicApi = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-
-// Interceptor xử lý response và tự động refresh token khi gặp lỗi 401
-
+// Interceptor xử lý response và tự động refresh token với Mutex Queue khi gặp lỗi 401
 api.interceptors.response.use(
   (response) => {
     return response;
@@ -57,52 +71,62 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Mỗi request chỉ được refresh một lần để tránh vòng lặp vô hạn khi token lỗi.
-    // Các endpoint xác thực (login/register/google/refresh) bị loại trừ: 401 ở đây
-    // nghĩa là sai thông tin đăng nhập, không phải phiên hết hạn — nếu vẫn thử refresh,
-    // lỗi "Refresh token không được để trống" (do chưa từng đăng nhập) sẽ ghi đè lên
-    // thông báo lỗi đăng nhập thật.
     if (
-      error.response && error.response.status === 401 && originalRequest && !originalRequest._retry
-      && !originalRequest.skipAuthRefresh
-      && !shouldSkipTokenRefresh(originalRequest.url)
+      error.response &&
+      error.response.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !originalRequest.skipAuthRefresh &&
+      !shouldSkipTokenRefresh(originalRequest.url)
     ) {
+      if (isRefreshing) {
+        // Nếu đang có tiến trình refresh token chạy ngầm, đẩy request vào hàng đợi
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            if (token) {
+              originalRequest.headers['Authorization'] = `Bearer ${token}`;
+            }
+            return api(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
       originalRequest._retry = true;
+      isRefreshing = true;
 
       try {
         const res = await axios.post(
-          `${import.meta.env.VITE_API_URL}/auth/refresh`,
+          `${import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}/auth/refresh`,
           null,
           { withCredentials: true, skipBearer: true, skipAuthRefresh: true }
         );
 
         if (res.status === 200) {
-          // 🔥 HỢP NHẤT: Hỗ trợ cả 2 format response từ BE của nhánh Duy
           const newToken = res.data?.token || res.data?.data?.token || null;
 
           if (newToken) {
-            // 🔥 Giữ thay đổi: Lấy hàm loginSuccess trực tiếp từ kho Zustand mà không dùng Hook
             const { loginSuccess } = useAuthStore.getState();
             loginSuccess(newToken);
-
-            // Gán token mới vào header của request bị lỗi trước đó
             originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-
           }
 
-          // Thực hiện lại request ban đầu với token mới
+          processQueue(null, newToken);
           return api(originalRequest);
         }
       } catch (refreshError) {
-        // Refresh failed, clear everything
+        processQueue(refreshError, null);
         const { logout } = useAuthStore.getState();
         logout();
         localStorage.removeItem('researchpulse_token');
         return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
 
-    // If it's 401 and we already retried, clear token
+    // Nếu đã retry hoặc không thể refresh, thực hiện dọn dẹp phiên
     if (error.response && error.response.status === 401) {
       const { logout } = useAuthStore.getState();
       logout();
