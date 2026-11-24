@@ -24,6 +24,7 @@ export { ScientificMathProvider, ScientificMathText } from './components/Scienti
 // Feedback
 export { default as EmptyState } from './feedback/EmptyState';
 export { default as ErrorState } from './feedback/ErrorState';
+export { default as ErrorBoundary } from './feedback/ErrorBoundary';
 export { default as Toast, default as AppToast } from './feedback/Toast';
 export { default as LoadingState } from './feedback/LoadingState';
 export { PageLoadingBar, CountdownRedirect } from './feedback/PageLoadingBar';
