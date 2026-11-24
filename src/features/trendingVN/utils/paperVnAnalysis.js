@@ -150,7 +150,7 @@ export const formatGrowthRate = (value) => {
   if (value === null || value === undefined) return 'New';
   const percent = Number(value) * 100;
   if (!Number.isFinite(percent)) return 'N/A';
-  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(percent)}%`;
+  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(percent)}%`;
 };
 
 // trending_score is a z-score blend (see docs/trending-score-formula-spec.md) — not a
@@ -158,7 +158,7 @@ export const formatGrowthRate = (value) => {
 export const formatTrendingScore = (value) => {
   if (value === null || value === undefined) return '—';
   if (!Number.isFinite(Number(value))) return 'N/A';
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2, signDisplay: 'exceptZero' }).format(Number(value));
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, signDisplay: 'exceptZero' }).format(Number(value));
 };
 
 export const mapPaperVnAnalysisResponse = (payload = {}) => ({
