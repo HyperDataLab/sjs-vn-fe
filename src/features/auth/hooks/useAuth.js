@@ -3,16 +3,13 @@
  *
  * File: features/auth/hooks/useAuth.js
  */
-import { useCallback, useRef } from 'react';
-import { useGoogleLogin } from '@react-oauth/google';
+import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from '../../../shared/utils/toast';
 import { useAuthStore } from '../../../app/store/authStore';
 import { useUserStore } from '../../../app/store/userStore';
 import {
   deleteCurrentAccount,
   fetchCurrentProfile,
-  loginWithGoogleCode,
   loginWithPassword,
   logoutSession,
   registerUser,
@@ -29,7 +26,6 @@ import { startGoogleSso } from '../services/centralSso';
  */
 export default function useAuth() {
   const navigate = useNavigate();
-  const googleRedirectRef = useRef('/');
 
   // State auth chính lấy từ Zustand store.
   const user = useAuthStore((state) => state.user);
@@ -68,48 +64,6 @@ export default function useAuth() {
       setLoading(false);
     }
   }, [setEmail, setError, setLoading, setUser]);
-
-  /**
-   * Cấu hình Google OAuth dạng auth-code.
-   * Sau khi Google trả code, FE gửi code đó về BE để BE xác thực và trả token/user.
-   */
-  const googleLogin = useGoogleLogin({
-    flow: 'auth-code',
-    onSuccess: async (codeResponse) => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const {
-          response,
-          token: googleToken,
-          email,
-          user: authenticatedUser,
-        } = await loginWithGoogleCode(codeResponse.code);
-
-        if (response?.success && googleToken) {
-          if (!authenticatedUser) {
-            throw new Error('Phản hồi đăng nhập thiếu định danh người dùng');
-          }
-          loginSuccess(googleToken, authenticatedUser);
-          setEmail(email);
-          toast.success('Đăng nhập thành công');
-          navigate(googleRedirectRef.current, { replace: true });
-        } else {
-          toast.error('Đăng nhập thất bại');
-        }
-      } catch (err) {
-        const message = err.response?.data?.message || err.message || 'Đăng nhập thất bại';
-        setError(message);
-        toast.error('Đăng nhập thất bại');
-      } finally {
-        setLoading(false);
-      }
-    },
-    onError: () => {
-      toast.error('Đăng nhập Google thất bại');
-    },
-  });
 
   /**
    * Đăng nhập bằng email/password.
