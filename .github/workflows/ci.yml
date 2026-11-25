@@ -1,14 +1,14 @@
-name: Next.js CI
+name: CI - Dev & Main
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "dev"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "dev"]
 
 jobs:
   build-and-lint:
-    name: Build & Lint (CI)
+    name: Build, Lint & Test (CI)
     runs-on: ubuntu-latest
 
     steps:
@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20" # Using Node 20 as stable version
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
@@ -27,5 +27,12 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Run TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Run Tests
+        run: npm test
+
       - name: Build Application
         run: npm run build
+
